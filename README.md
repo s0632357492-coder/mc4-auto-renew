@@ -1,6 +1,7 @@
-# MC4.in Auto-Renew Bot
+# MC4.in Auto-Renew Bot — Web Service Edition
 
-Headless Playwright bot that automatically renews a free Minecraft server on [mc4.in](https://mc4.in) every 15 minutes.
+Headless Playwright bot that auto-renews a free Minecraft server on mc4.in every 15 minutes.
+Runs as a **Render Free Web Service** with Flask keeping the process alive and UptimeRobot preventing idle shutdown.
 
 ---
 
@@ -8,67 +9,66 @@ Headless Playwright bot that automatically renews a free Minecraft server on [mc
 
 ```
 .
-├── main.py           # Bot entry point
-├── requirements.txt  # Python dependencies
+├── main.py           # Flask + bot thread
+├── requirements.txt  # Dependencies
 └── README.md
 ```
 
 ---
 
-## Local development
+## Render Deployment
 
-### Prerequisites
+### 1 — Create Web Service
 
-- Python 3.10+
-- pip
+1. Push all files to a GitHub repo.
+2. Go to **dashboard.render.com → New → Web Service**.
+3. Connect the repo.
 
-### Setup
+### 2 — Service settings
 
-```bash
-pip install -r requirements.txt
-playwright install chromium
-playwright install-deps chromium   # Linux only
-```
-
-### Run
-
-```bash
-export MC4_USERNAME="your_username"
-export MC4_PASSWORD="your_password"
-python main.py
-```
-
----
-
-## Deploy to Render (Background Worker)
-
-### 1 – Create a new service
-
-1. Go to [https://dashboard.render.com](https://dashboard.render.com) → **New → Background Worker**
-2. Connect your GitHub repo (push `main.py` + `requirements.txt` + `README.md`).
-
-### 2 – Build & Start commands
-
-| Field | Value |
+| Setting | Value |
 |---|---|
 | **Runtime** | Python 3 |
 | **Build Command** | `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium` |
 | **Start Command** | `python main.py` |
+| **Instance Type** | Free |
+| **Port** | `10000` |
 
-### 3 – Environment variables
+### 3 — Environment variables
 
-In Render → **Environment** tab, add:
+In Render → **Environment** tab:
 
 | Key | Value |
 |---|---|
 | `MC4_USERNAME` | your mc4.in username |
 | `MC4_PASSWORD` | your mc4.in password |
 
-> ⚠️ Never commit credentials to source control.
+### 4 — Deploy
 
-### 4 – Deploy
+Click **Create Web Service**. Render builds, installs Playwright + Chromium, and starts the bot.
 
-Click **Create Background Worker**. Render will build, install Playwright + Chromium, and start the bot automatically.
+---
+
+## UptimeRobot — Anti-sleep pings
+
+Render Free tier sleeps after ~15 min of no HTTP traffic. Pin UptimeRobot to prevent this.
+
+1. Register free at [uptimerobot.com](https://uptimerobot.com).
+2. **New Monitor → HTTP(s)**.
+3. Set **URL** to your Render service URL, e.g. `https://your-service.onrender.com/health`.
+4. Set **Monitoring Interval** to **5 minutes**.
+5. Save.
+
+The `/health` endpoint returns `{"status": "ok"}` — lightweight and always fast.
+
+---
+
+## Endpoints
+
+| Route | Response |
+|---|---|
+| `GET /` | `Bot is running` (200) |
+| `GET /health` | `{"status": "ok"}` (200) |
 
 ---
 
@@ -76,34 +76,34 @@ Click **Create Background Worker**. Render will build, install Playwright + Chro
 
 | Phase | Detail |
 |---|---|
-| Session | Saves `storage_state.json` after first login; reuses it on every cycle |
-| Login fallback | If session is expired the bot re-authenticates automatically |
-| Renew flow | Clicks **ต่ออายุฟรี → ยืนยันต่ออายุฟรี 1 ชั่วโมง → OK** (twice, with popup guard on the second OK) |
-| Popup guard | Uses `context.expect_page()` to catch and close any Shopee / ad tabs instantly |
-| Retry | Each cycle retries up to 3 times before sleeping |
-| Loop | Runs forever; waits 900 s (15 min) between cycles |
-| Anti-detection | Random 1–3 s delays between actions; navigator.webdriver spoofed |
-| Logging | Timestamped stdout logs — visible in Render's log stream |
+| Startup | Flask starts on `0.0.0.0:10000`; bot runs in a `daemon` thread |
+| Session | Saves `storage_state.json` after first login; reused every cycle |
+| Login fallback | Auto re-authenticates when session expires |
+| Renew flow | ต่ออายุฟรี → ยืนยันต่ออายุฟรี 1 ชั่วโมง → OK (×2 with popup guard) |
+| Popup guard | `context.expect_page()` catches and closes Shopee / ad tabs |
+| Retry | Up to 3 attempts per cycle |
+| Loop | `while True` with 900 s (15 min) sleep between cycles |
+| Anti-detection | Random 1–3 s delays; `navigator.webdriver` spoofed |
 
 ---
 
-## Logs
-
-Example output:
+## Sample logs
 
 ```
-[2026-05-01 10:00:00] MC4.in Auto-Renew Bot starting …
+[2026-05-01 10:00:00] MC4.in Auto-Renew Bot (Web Service mode) starting …
 [2026-05-01 10:00:00] Cycle interval: 900s | Max retries: 3
-[2026-05-01 10:00:00] ═══ Cycle #1 ═══
-[2026-05-01 10:00:01] Loading saved session …
-[2026-05-01 10:00:03] Session valid ✓
-[2026-05-01 10:00:03] Renew attempt 1/3 …
-[2026-05-01 10:00:06] Clicking: ต่ออายุฟรี
-[2026-05-01 10:00:09] Clicking: ยืนยันต่ออายุฟรี (1st)
-[2026-05-01 10:00:11] Clicking: OK (1st)
-[2026-05-01 10:00:13] Success indicator found ✓
-[2026-05-01 10:00:16] Clicking: OK (with popup guard)
-[2026-05-01 10:00:16] Popup/new tab detected (https://shopee.co.th/…) – closing …
-[2026-05-01 10:00:18] Renew success ✓
-[2026-05-01 10:00:18] Sleeping 900s until next cycle …
+[2026-05-01 10:00:00] Bot thread launched. Starting Flask on 0.0.0.0:10000 …
+[2026-05-01 10:00:01] Bot loop started.
+[2026-05-01 10:00:01] ═══ Cycle #1 ═══
+[2026-05-01 10:00:02] Loading saved session …
+[2026-05-01 10:00:04] Session valid ✓
+[2026-05-01 10:00:04] Renew attempt 1/3 …
+[2026-05-01 10:00:07] Clicking: ต่ออายุฟรี
+[2026-05-01 10:00:10] Clicking: ยืนยันต่ออายุฟรี (1st)
+[2026-05-01 10:00:12] Clicking: OK (1st)
+[2026-05-01 10:00:14] Success indicator found ✓
+[2026-05-01 10:00:17] Clicking: OK (with popup guard)
+[2026-05-01 10:00:17] Popup/new tab detected (https://shopee.co.th/…) – closing …
+[2026-05-01 10:00:19] Renew success ✓
+[2026-05-01 10:00:19] Sleeping 900s until next cycle …
 ```
